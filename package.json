@@ -1,0 +1,25 @@
+{
+  "name": "opencode-runzivo",
+  "version": "0.1.0",
+  "description": "Runzivo sandboxes from inside OpenCode, through the rzv CLI",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "files": ["src/index.ts", "src/rzv.ts", "LICENSE", "README.md"],
+  "repository": { "type": "git", "url": "git+https://github.com/Runzivo/rzv-opencode-plugin.git" },
+  "homepage": "https://github.com/Runzivo/rzv-opencode-plugin#readme",
+  "keywords": ["opencode", "opencode-plugin", "runzivo", "sandbox"],
+  "engines": { "opencode": ">=1.19.5" },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "^1.19.5"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "typescript": "5.9.3"
+  }
+}
