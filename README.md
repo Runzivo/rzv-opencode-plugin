@@ -2,6 +2,10 @@
 
 Create and manage [Runzivo](https://runzivo.dev) sandboxes from inside [OpenCode](https://opencode.ai). A sandbox is an isolated Linux microVM with your files in `/workspace`. OpenCode can create one, run commands in it over SSH, show what it costs, put it to sleep, wake it and delete it. Compute is charged per running minute from your Runzivo workspace credits; there is no separate plan.
 
+[![CI](https://github.com/Runzivo/rzv-opencode-plugin/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Runzivo/rzv-opencode-plugin/actions/workflows/ci.yml) [![Latest release](https://img.shields.io/github/v/release/Runzivo/rzv-opencode-plugin)](https://github.com/Runzivo/rzv-opencode-plugin/releases/latest) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![Runzivo](https://img.shields.io/badge/Runzivo-sandboxes-0B0F14)](https://runzivo.dev/sandboxes/)
+
+<img src="https://raw.githubusercontent.com/Runzivo/rzv-opencode-plugin/main/assets/demo.gif" width="1200" alt="Animated demo of Runzivo sandboxes for OpenCode, in a terminal panel: the rzv install and the plugin entry in opencode.json, then opencode run prompts call rzv_sandbox_create, rzv_sandbox_exec (Linux x86_64, plugin-ok), rzv_sandbox_status (7h 59m left, credits used), rzv_sandbox_stop, rzv_sandbox_start and rzv_sandbox_delete, which runs only after the first call is refused at the permission prompt and the second is approved. The sandbox ID shown is a placeholder." />
+
 The plugin only runs the `rzv` CLI on your machine. It makes no API calls of its own, stores no tokens, and never reads or uploads your code.
 
 ## Requirements
