@@ -19,17 +19,28 @@ log() { printf '== %s\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
 rzv whoami | grep -q '^Environment: shared ' || fail "rzv whoami must show Environment: shared"
-[ "$(stat -f %Lp "$OPENAI_KEY_FILE" 2>/dev/null || stat -c %a "$OPENAI_KEY_FILE")" = 600 ] || fail "key file must be mode 600"
+mode=$(python3 -I -c 'import os,sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777))' "$OPENAI_KEY_FILE")
+[ "$mode" = 0o600 ] || fail "key file must be mode 600"
 "$OPENCODE_BIN" --version
 
+ids() { rzv sandboxes list --json | python3 -I -c 'import sys,json
+for s in json.load(sys.stdin)["sandboxes"]: print(s["id"], s["name"])'; }
+leak() { grep -rqF -f "$OPENAI_KEY_FILE" "$E2E_DIR" --exclude-dir=node_modules; }
+
 mkdir -p "$(dirname "$lock")"
-until mkdir "$lock" 2>/dev/null; do log "waiting for $lock"; sleep 20; done
+until mkdir "$lock" 2>/dev/null; do log "waiting for $lock (remove it if no test is running)"; sleep 20; done
+before=$(ids | cut -d' ' -f1)
 cleanup() {
-  rzv sandboxes list --json | python3 -I -c 'import sys,json
-for s in json.load(sys.stdin)["sandboxes"]:
-    if s["name"].startswith(sys.argv[1]): print(s["id"])' "opencode-$run_id-" |
-    while read -r id; do log "cleanup: deleting $id"; rzv sandboxes delete "$id" >/dev/null || true; done
-  rmdir "$lock" 2>/dev/null || true
+  set +e
+  # Delete every opencode-* sandbox this run created, whatever the model named it.
+  ids | while read -r id name; do
+    case "$name" in opencode-*) ;; *) continue ;; esac
+    grep -qx "$id" <<<"$before" && continue
+    log "cleanup: deleting $id ($name)"
+    rzv sandboxes delete "$id" >/dev/null
+  done
+  if leak; then printf 'FAIL: the API key appears under %s\n' "$E2E_DIR" >&2; fi
+  rmdir "$lock"
 }
 trap cleanup EXIT
 
@@ -44,10 +55,11 @@ EOF
 
 n=0
 turn() { # turn [--auto] <prompt>; output in $E2E_DIR/turn-N.jsonl
-  n=$((n + 1)); local auto=()
-  if [ "$1" = --auto ]; then auto=(--auto); shift; fi
+  n=$((n + 1)); local auto=""
+  if [ "$1" = --auto ]; then auto=--auto; shift; fi
   log "turn $n: $1"
-  (cd "$proj" && "$OPENCODE_BIN" run "${auto[@]}" --format json -m "$model" "$1") >"$E2E_DIR/turn-$n.jsonl" 2>"$E2E_DIR/turn-$n.err" || true
+  # shellcheck disable=SC2086 # $auto is empty or one flag
+  (cd "$proj" && "$OPENCODE_BIN" run $auto --format json -m "$model" "$1") >"$E2E_DIR/turn-$n.jsonl" 2>"$E2E_DIR/turn-$n.err" || true
   last=$E2E_DIR/turn-$n.jsonl
 }
 used() { grep -q "\"tool\":\"$1\"" "$last" || fail "turn $n did not call $1"; }
@@ -55,8 +67,8 @@ field() { rzv sandboxes get "$sid" --json | python3 -I -c 'import sys,json; prin
 
 turn "Call the rzv_sandbox_create tool with name \"$run_id\" and lifetime \"8h\". Then reply with the sandbox id only."
 used rzv_sandbox_create
-sid=$(rzv sandboxes list --json | python3 -I -c 'import sys,json
-print(next(s["id"] for s in json.load(sys.stdin)["sandboxes"] if s["name"].startswith(sys.argv[1])))' "opencode-$run_id-")
+sid=$(ids | while read -r id name; do grep -qx "$id" <<<"$before" || echo "$id"; done | head -1)
+[ -n "$sid" ] || fail "no new sandbox after turn 1"
 log "created $sid ($(field name)), status $(field status)"
 
 turn "Call the rzv_sandbox_exec tool with id \"$sid\" and command \"uname -sm; echo plugin-ok > /workspace/e2e.txt; echo home-ok > ~/e2e-home.txt; cat /workspace/e2e.txt\". Reply with the output."
@@ -82,12 +94,14 @@ grep -q 'plugin-ok' "$last" || fail "/workspace did not survive stop and start"
 if grep -q 'home-ok' "$last"; then log "home directory survived stop and start"; else log "home directory did not survive"; fi
 
 turn "Call the rzv_sandbox_delete tool with id \"$sid\"."
-[ "$(field status)" != deleted ] || fail "delete ran without the user's approval"
+used rzv_sandbox_delete
+grep -q 'permission requested: rzv_sandbox_delete' "$E2E_DIR/turn-$n.err" || fail "delete did not ask for approval"
+[ "$(field status)" = running ] || fail "delete ran without the user's approval"
 log "delete without approval was refused; sandbox still $(field status)"
 
 turn --auto "Call the rzv_sandbox_delete tool with id \"$sid\"."
 used rzv_sandbox_delete
 if rzv sandboxes get "$sid" --json >/dev/null 2>&1; then log "after delete: $(field status)"; else log "after delete: not found"; fi
 
-if grep -qF -f "$OPENAI_KEY_FILE" "$E2E_DIR"/turn-*; then fail "the API key appears in the evidence"; fi
+if leak; then fail "the API key appears under $E2E_DIR"; fi
 log "PASS ($n turns, sandbox $sid)"

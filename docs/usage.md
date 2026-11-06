@@ -24,7 +24,7 @@ Options: `size` (`2vcpu-8gb` default, `4vcpu-16gb`, `8vcpu-32gb`, `16vcpu-64gb`)
 
 ## Sleep, wake and lifetime
 
-Stop ends running processes and the compute charge. Files in `/workspace` stay; keep your work there or push it. A sandbox lives 8, 12 or 24 hours from its first run, even while stopped. At the end it stops for good and its files are deleted. It cannot be extended.
+Stop ends running processes and the compute charge. Files in `/workspace` stay; keep your work there or push it. A sandbox lives 8, 12 or 24 hours, even while stopped; 12h and 24h are offered only where Runzivo has turned them on. The timer starts when the sandbox first runs. At the end it stops for good and its files are deleted. It cannot be extended.
 
 ## Cost
 
@@ -32,6 +32,6 @@ Stop ends running processes and the compute charge. Files in `/workspace` stay; 
 
 ## Delete
 
-OpenCode asks before it deletes. `opencode run` without `--auto` refuses the delete. To skip the question, set `"permission": {"rzv_sandbox_delete": "allow"}`.
+OpenCode asks before it deletes. `opencode run` without `--auto` refuses the delete. To skip the question, set `"permission": {"rzv_sandbox_delete": "allow"}`. An agent whose own `permission` allows every tool also skips it.
 
 Back to the [README](../README.md).

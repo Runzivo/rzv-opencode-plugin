@@ -13,7 +13,7 @@
   "engines": { "opencode": ">=1.19.5" },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/"
+    "test": "node --test test/*.test.ts"
   },
   "dependencies": {
     "@opencode-ai/plugin": "^1.19.5"

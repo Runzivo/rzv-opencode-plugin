@@ -43,7 +43,7 @@ test("sandbox names start with opencode-", () => {
 test("explain maps rzv errors to clear messages", () => {
   const j = (error: string, message: string, code = 1) => ({ code, stdout: "", stderr: JSON.stringify({ error, message }) + "\n" })
   assert.match(explain(j("credit_exhausted", "Out of credit.")), /Out of credit\. \(credit_exhausted\) Add credit/)
-  assert.match(explain(j("sandbox_capacity_busy", "Busy.")), /no free capacity/)
+  assert.match(explain(j("sandbox_capacity_busy", "Busy.")), /Busy\. \(sandbox_capacity_busy\) Try again in a few minutes/)
   assert.match(explain(j("sandbox_limit_reached", "Max.")), /Stop or delete/)
   assert.equal(explain(j("auth", "Sign in with `rzv login` first.", 3)), "Sign in with `rzv login` first.")
   assert.match(explain(j("auth", "Credentials expired.", 3)), /Run `rzv login` in a terminal/)
@@ -65,4 +65,15 @@ test("describe shows expiry, time left and credits", () => {
   assert.match(out, /time left: 1h 2m/)
   assert.match(out, /credits used: 1.5/)
   assert.match(out, /error: credit_exhausted/)
+})
+
+test("run reports a missing program and a cancel clearly", async () => {
+  const r = await run("/nonexistent/rzv", [])
+  assert.equal(r.code, 127)
+  assert.match(explain(r), /was not found/)
+  const d = mkdtempSync(join(tmpdir(), "rzv-s-"))
+  const ac = new AbortController()
+  const p = run(fakeRzv(d, "sleep 5"), [], { signal: ac.signal })
+  ac.abort()
+  assert.equal(explain(await p), "Cancelled.")
 })

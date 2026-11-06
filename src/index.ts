@@ -19,7 +19,7 @@ import {
 } from "./rzv.ts"
 
 const z = tool.schema
-const id = () => z.string().regex(/^[A-Za-z0-9_-]{1,80}$/).describe("Sandbox id, from rzv_sandbox_status")
+const id = () => z.string().regex(/^sbx_[A-Za-z0-9]{1,64}$/).describe("Sandbox id (sbx_...), from rzv_sandbox_status")
 
 type Opts = { signal?: AbortSignal; timeoutMs?: number }
 
@@ -53,12 +53,23 @@ async function sshConfig(sid: string, opts: Opts): Promise<string> {
 
 const MOVING = new Set(["pending", "queued", "starting", "stopping"])
 
+const sleep = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((r) => {
+    const t = setTimeout(r, ms)
+    signal?.addEventListener("abort", () => (clearTimeout(t), r()), { once: true })
+  })
+
 // Polls until the sandbox leaves a moving state, or the deadline passes.
 async function settle(s: Sandbox, opts: Opts & { deadlineMs: number }): Promise<Sandbox> {
   const end = Date.now() + opts.deadlineMs
-  while (MOVING.has(s.status) && Date.now() < end && !opts.signal?.aborted) {
-    await new Promise((r) => setTimeout(r, 3000))
-    s = (await rzvJSON(["sandboxes", "get", s.id], opts)).sandbox as Sandbox
+  while (MOVING.has(s.status) && Date.now() < end) {
+    await sleep(3000, opts.signal)
+    if (opts.signal?.aborted) throw new Error(`Cancelled while ${s.name} (${s.id}) was ${s.status}.`)
+    try {
+      s = (await rzvJSON(["sandboxes", "get", s.id], { signal: opts.signal, timeoutMs: 30_000 })).sandbox as Sandbox
+    } catch (e) {
+      throw new Error(`${s.name} (${s.id}) is ${s.status}, but checking it failed: ${(e as Error).message}`)
+    }
   }
   return s
 }
@@ -107,8 +118,9 @@ export const RunzivoPlugin: Plugin = async ({ worktree, directory }) => ({
   async config(cfg) {
     cfg.command ??= {}
     for (const [name, c] of Object.entries(COMMANDS)) cfg.command[name] ??= c
-    const p = (cfg.permission ??= {}) as Record<string, unknown>
-    p.rzv_sandbox_delete ??= "ask"
+    // A string permission ("allow" for everything) is the user's choice; leave it.
+    cfg.permission ??= {}
+    if (typeof cfg.permission === "object") (cfg.permission as Record<string, unknown>).rzv_sandbox_delete ??= "ask"
   },
   tool: {
     rzv_sandbox_create: tool({
@@ -195,7 +207,8 @@ export const RunzivoPlugin: Plugin = async ({ worktree, directory }) => ({
       },
       async execute(a, ctx) {
         const host = await sshConfig(a.id, { signal: ctx.abort })
-        const r = await run("ssh", ["-o", "BatchMode=yes", host, a.command], {
+        // "--" stops ssh reading options from the command, so it cannot change how ssh runs locally.
+        const r = await run("ssh", ["-o", "BatchMode=yes", "--", host, a.command], {
           signal: ctx.abort,
           timeoutMs: (a.timeout ?? 300) * 1000,
         })

@@ -41,8 +41,16 @@ export function run(file: string, args: string[], opts: { timeoutMs?: number; si
       (err, stdout, stderr) => {
         const e = err as (NodeJS.ErrnoException & { code?: number | string; killed?: boolean }) | null
         let code = 0
-        if (e) code = typeof e.code === "number" ? e.code : e.killed ? 124 : 1
-        resolve({ code, stdout: String(stdout), stderr: String(stderr) })
+        let extra = ""
+        if (e) {
+          if (typeof e.code === "number") code = e.code
+          else if (e.code === "ENOENT") (code = 127), (extra = `${file} was not found.`)
+          else if (e.name === "AbortError" || opts.signal?.aborted) (code = 130), (extra = "Cancelled.")
+          else if (e.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") (code = 1), (extra = "The output was larger than 8 MiB.")
+          else if (e.killed) code = 124
+          else (code = 1), (extra = e.message)
+        }
+        resolve({ code, stdout: String(stdout ?? ""), stderr: [String(stderr ?? ""), extra].filter(Boolean).join("\n") })
       },
     )
   })
@@ -76,7 +84,7 @@ export function sandboxName(base: string, rand: string): string {
 
 const HINTS: Record<string, string> = {
   credit_exhausted: "Add credit to the workspace in the Runzivo portal (Billing), then try again.",
-  sandbox_capacity_busy: "Runzivo has no free capacity for that size right now. Try again in a few minutes, or use a smaller size.",
+  sandbox_capacity_busy: "Try again in a few minutes, or use a smaller size.",
   no_capacity: "Try again in a few minutes, or use a smaller size.",
   sandbox_limit_reached: "Stop or delete a running sandbox first. rzv_sandbox_status lists them.",
   sandbox_not_found: "Check the id with rzv_sandbox_status.",
@@ -98,7 +106,8 @@ export function explain(r: Result): string {
   }
   if (!message) message = r.stderr.trim().replace(/^rzv:\s*/, "") || `rzv exited with status ${r.code}`
   if (r.code === 3) return message.includes("rzv login") ? message : `${message} Run \`rzv login\` in a terminal, then try again.`
-  if (r.code === 124) return "rzv timed out. Try again; `rzv sandboxes list` shows what happened."
+  if (r.code === 124) return "rzv timed out. The change may still happen: check rzv_sandbox_status before you try again."
+  if (r.code === 127 || r.code === 130) return message
   const hint = HINTS[code]
   return [code ? `${message} (${code})` : message, hint].filter(Boolean).join(" ")
 }
