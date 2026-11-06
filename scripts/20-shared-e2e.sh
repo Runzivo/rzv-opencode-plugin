@@ -29,13 +29,12 @@ leak() { grep -rqF -f "$OPENAI_KEY_FILE" "$E2E_DIR" --exclude-dir=node_modules; 
 
 mkdir -p "$(dirname "$lock")"
 until mkdir "$lock" 2>/dev/null; do log "waiting for $lock (remove it if no test is running)"; sleep 20; done
-before=$(ids | cut -d' ' -f1)
+sid=""
 cleanup() {
   set +e
-  # Delete every opencode-* sandbox this run created, whatever the model named it.
+  # Delete only what this run made: the id the create tool reported, and any opencode-<run>-* name.
   ids | while read -r id name; do
-    case "$name" in opencode-*) ;; *) continue ;; esac
-    grep -qx "$id" <<<"$before" && continue
+    case "$name" in "opencode-$run_id-"*) ;; *) [ "$id" = "$sid" ] || continue ;; esac
     log "cleanup: deleting $id ($name)"
     rzv sandboxes delete "$id" >/dev/null
   done
@@ -67,8 +66,13 @@ field() { rzv sandboxes get "$sid" --json | python3 -I -c 'import sys,json; prin
 
 turn "Call the rzv_sandbox_create tool with name \"$run_id\" and lifetime \"8h\". Then reply with the sandbox id only."
 used rzv_sandbox_create
-sid=$(ids | while read -r id name; do grep -qx "$id" <<<"$before" || echo "$id"; done | head -1)
-[ -n "$sid" ] || fail "no new sandbox after turn 1"
+sid=$(python3 -I -c 'import sys,json
+for l in open(sys.argv[1]):
+    try: p=json.loads(l).get("part") or {}
+    except ValueError: continue
+    m=(p.get("state") or {}).get("metadata") or {}
+    if p.get("tool")=="rzv_sandbox_create" and m.get("sandbox_id"): print(m["sandbox_id"]); break' "$last")
+[ -n "$sid" ] || fail "turn 1 did not report a sandbox id"
 log "created $sid ($(field name)), status $(field status)"
 
 turn "Call the rzv_sandbox_exec tool with id \"$sid\" and command \"uname -sm; echo plugin-ok > /workspace/e2e.txt; echo home-ok > ~/e2e-home.txt; cat /workspace/e2e.txt\". Reply with the output."

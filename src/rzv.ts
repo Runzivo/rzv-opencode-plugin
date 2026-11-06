@@ -39,7 +39,7 @@ export function run(file: string, args: string[], opts: { timeoutMs?: number; si
       args,
       { timeout: opts.timeoutMs ?? 120_000, signal: opts.signal, env: opts.env as NodeJS.ProcessEnv, maxBuffer: 8 << 20 },
       (err, stdout, stderr) => {
-        const e = err as (NodeJS.ErrnoException & { code?: number | string; killed?: boolean }) | null
+        const e = err as (NodeJS.ErrnoException & { code?: number | string; killed?: boolean; signal?: string | null }) | null
         let code = 0
         let extra = ""
         if (e) {
@@ -48,7 +48,7 @@ export function run(file: string, args: string[], opts: { timeoutMs?: number; si
           else if (e.name === "AbortError" || opts.signal?.aborted) (code = 130), (extra = "Cancelled.")
           else if (e.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") (code = 1), (extra = "The output was larger than 8 MiB.")
           else if (e.killed) code = 124
-          else (code = 1), (extra = e.message)
+          else (code = 1), (extra = e.signal ? `Ended by signal ${e.signal}.` : "Failed to run.")
         }
         resolve({ code, stdout: String(stdout ?? ""), stderr: [String(stderr ?? ""), extra].filter(Boolean).join("\n") })
       },
